@@ -1,0 +1,91 @@
+@startuml
+title Контекстная диаграмма - Открытие депозитов онлайн (MVP)
+
+' Определение стилей
+!define RECTANGLE class
+!define PERSON rectangle
+!define SYSTEM rectangle
+!define BOUNDARY rectangle
+
+' Цвета для типов элементов
+skinparam rectangle {
+  BackgroundColor lightblue
+  BorderColor black
+  FontColor black
+  FontSize 12
+}
+
+skinparam person {
+  BackgroundColor lightgreen
+  BorderColor black
+  FontColor black
+  FontSize 12
+}
+
+skinparam boundary {
+  BackgroundColor lightgray
+  BorderColor black
+  FontColor black
+  FontSize 14
+  BorderThickness 2
+}
+
+' Внешние акторы (люди)
+rectangle "Новый клиент\n(пользователь сайта)" <<person>> as client_new
+rectangle "Существующий клиент\n(пользователь интернет-банка)" <<person>> as client_existing
+rectangle "Оператор кол-центра" <<person>> as call_center_operator
+rectangle "Сотрудник отделения\n(фронт-офис)" <<person>> as branch_employee
+rectangle "Сотрудник бэк-офиса\n(депозиты)" <<person>> as deposit_backoffice
+rectangle "Сотрудник бэк-офиса\n(кредиты)" <<person>> as credit_backoffice
+
+' Граница банка
+rectangle "Банк 'Стандарт'" <<boundary>> {
+  
+  ' Существующие системы
+  rectangle "Сайт\nPHP + React.js\nИнформационный сайт" <<system>> as website
+  rectangle "Интернет-банк\nASP.NET MVC + MS SQL\nОсновной канал" <<system>> as internet_bank
+  rectangle "АБС\nDelphi + Oracle\nЯдро банковской системы" <<system>> as abs
+  rectangle "Система кол-центра\nReact + Java + PostgreSQL\nУправление обращениями" <<system>> as call_center_system
+  rectangle "СМС-шлюз\nОтправка уведомлений" <<system>> as sms_gateway
+  
+  ' Новые системы
+  rectangle "RMS\nRate Management System\nJava + PostgreSQL\nУправление ставками" <<system>> as new_rms
+  rectangle "UAR\nUnified Application Registry\nJava + PostgreSQL\nЕдиный реестр заявок" <<system>> as new_uar
+  rectangle "API Gateway\nNginx/Kong\nМаршрутизация и кэширование" <<system>> as new_api_gateway
+  rectangle "Адаптер АБС\nJava/Python\nБуферизация доступа к АБС" <<system>> as new_abs_adapter
+  rectangle "СМС-сервис\nJava/Python\nУправление уведомлениями" <<system>> as new_sms_service
+}
+
+' Внешние системы
+rectangle "Центральный банк РФ\nИсточник ставки рефинансирования" <<system>> as cbr
+rectangle "Телеком-оператор\nВнешний оператор СМС" <<system>> as telecom
+rectangle "Бюро кредитных историй\nДля кредитного процесса" <<system>> as credit_bureau
+
+' Связи
+client_new --> website : "Просматривает ставки,\nподает заявку (HTTPS)"
+client_existing --> internet_bank : "Просматривает ставки,\nподает заявку (HTTPS)"
+
+website --> new_api_gateway : "Получение ставок,\nсоздание заявок (HTTPS/REST)"
+internet_bank --> new_api_gateway : "Получение ставок,\nсоздание заявок (HTTPS/REST)"
+
+new_api_gateway --> new_rms : "Получение ставок (REST)"
+new_api_gateway --> new_uar : "Создание/чтение заявок (REST)"
+
+new_uar --> new_sms_service : "События изменения статуса (REST/Events)"
+new_sms_service --> sms_gateway : "Отправка СМС (API)"
+sms_gateway --> telecom : "Отправка СМС (API)"
+
+call_center_operator --> call_center_system : "Работа с заявками (HTTPS)"
+call_center_system --> new_uar : "Получение заявок с сайта (REST)"
+
+branch_employee --> abs : "Открытие депозита\n(Десктоп-клиент)"
+deposit_backoffice --> new_rms : "Управление ставками\n(HTTPS/Admin UI)"
+credit_backoffice --> new_rms : "Просмотр данных\n(ограниченный доступ)"
+
+new_rms --> new_abs_adapter : "Получение данных\nдля расчета ставок (REST)"
+new_uar --> new_abs_adapter : "Создание депозита\nпо заявке (REST)"
+new_abs_adapter --> abs : "Чтение/запись\nс ограничением скорости (Oracle SQL)"
+
+cbr --> new_rms : "Ставка рефинансирования\n(API/Email)"
+
+@enduml
