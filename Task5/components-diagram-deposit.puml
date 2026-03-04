@@ -1,0 +1,111 @@
+@startuml
+title Диаграмма компонентов - Онлайн-подача заявок на кредит
+
+' API Gateway
+rectangle "API Gateway" {
+  rectangle "Routing Service\nNginx/Kong" as gateway_routing
+  rectangle "Auth Service\nJWT/OAuth" as gateway_auth
+  rectangle "Rate Limiter" as gateway_rate
+  rectangle "Cache Service\nRedis" as gateway_cache
+}
+
+' Unified Application Registry
+rectangle "UAR (Unified Application Registry)" {
+  rectangle "UAR API\nJava Spring Boot" as uar_api
+  database "UAR DB\nPostgreSQL" as uar_db
+  rectangle "Application Status Manager" as uar_status
+  rectangle "Event Publisher\nKafka" as uar_events
+}
+
+' Кредитный конвейер
+rectangle "Кредитный конвейер (Camunda)" {
+  rectangle "Camunda BPM Engine" as camunda_engine
+  database "Camunda DB\nOracle" as camunda_db
+  rectangle "Application Handler\nJava" as app_handler
+  rectangle "Scoring Client\nREST client" as scoring_client
+  rectangle "ABS Adapter Client" as abs_adapter_client
+  rectangle "Batch Processor\nРаз в сутки" as batch_processor
+}
+
+' Система скоринга
+rectangle "Система кредитного скоринга" {
+  rectangle "Scoring API\nPython/Flask" as scoring_api
+  database "Scoring DB\nPostgreSQL" as scoring_db
+  rectangle "ML Model Service\nPython/sklearn" as ml_service
+  rectangle "BKI Client\nREST client with retry" as bki_client
+  rectangle "ABS Data Loader\nПериодическая загрузка" as abs_loader
+  rectangle "Pre-score Calculator\nДля предодобренных" as prescore
+}
+
+' Адаптер АБС (из задания 3)
+rectangle "Адаптер АБС" {
+  rectangle "ABS Adapter API\nJava" as abs_adapter_api
+  database "ABS Cache\nPostgreSQL/Redis" as abs_cache
+  rectangle "ABS Reader\nЧтение реплики" as abs_reader
+  rectangle "ABS Writer\nBatch-запись" as abs_writer
+}
+
+' АБС
+rectangle "АБС" {
+  database "ABS Oracle DB" as abs_db
+  rectangle "PL/SQL Logic" as abs_plsql
+}
+
+' СМС-сервис
+rectangle "СМС-сервис" {
+  rectangle "SMS API\nJava/Python" as sms_api
+  database "SMS Queue DB\nPostgreSQL" as sms_db
+  rectangle "SMS Processor" as sms_processor
+  rectangle "SMS Gateway Client" as sms_gateway_client
+}
+
+' Внешние системы
+rectangle "Бюро кредитных историй" as bki
+rectangle "Телеком-оператор" as telecom
+
+' Связи API Gateway
+gateway_routing --> uar_api : "POST /applications"
+gateway_routing --> scoring_api : "GET /prescore (для предодобренных)"
+gateway_cache --> scoring_api : "Кэширование ставок"
+
+' Связи UAR
+uar_api --> uar_db : "SQL"
+uar_api --> uar_status : "Обновление статуса"
+uar_status --> uar_events : "Публикация событий"
+uar_events --> app_handler : "Новая заявка (Kafka/Events)"
+
+' Связи Кредитного конвейера
+app_handler --> camunda_engine : "Запуск BPMN процесса"
+camunda_engine --> camunda_db : "Хранение состояния"
+app_handler --> scoring_client : "Запрос скоринга"
+scoring_client --> scoring_api : "REST API"
+app_handler --> abs_adapter_client : "Запрос данных клиента"
+abs_adapter_client --> abs_adapter_api : "REST"
+app_handler --> uar_api : "Обновление статуса"
+batch_processor --> abs_adapter_api : "Выгрузка решений в АБС"
+
+' Связи Системы скоринга
+scoring_api --> ml_service : "Вызов модели"
+scoring_api --> bki_client : "Запрос в БКИ"
+bki_client --> bki : "REST API"
+scoring_api --> scoring_db : "Сохранение результатов"
+scoring_api --> abs_loader : "Получение данных клиента"
+abs_loader --> abs_adapter_api : "Запрос истории"
+prescore --> scoring_api : "Предварительный расчет для предодобренных"
+
+' Связи адаптера АБС
+abs_adapter_api --> abs_cache : "Кэширование"
+abs_reader --> abs_db : "Чтение (JDBC, ограниченно)"
+abs_reader --> abs_cache : "Обновление кэша"
+abs_writer --> abs_db : "Запись (batch, раз в 15-30 мин)"
+abs_adapter_api --> abs_reader : "Чтение через кэш"
+abs_adapter_api --> abs_writer : "Постановка в очередь"
+
+' Связи СМС-сервиса
+uar_events --> sms_api : "События статуса"
+sms_api --> sms_db : "Добавление в очередь"
+sms_processor --> sms_db : "Чтение очереди"
+sms_processor --> sms_gateway_client : "Отправка"
+sms_gateway_client --> telecom : "API"
+
+@enduml

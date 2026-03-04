@@ -1,0 +1,141 @@
+@startuml
+title Диаграмма контейнеров - Открытие депозитов онлайн (MVP)
+
+' Определение акторов
+actor "Клиент" as client
+
+' Граница банка
+rectangle "Банк 'Стандарт'" {
+
+  ' Интернет-банк
+  rectangle "Интернет-банк" {
+    rectangle "Web-приложение\nASP.NET MVC 4.5\nСуществующий фронтенд" as ib_web
+    rectangle "API-слой (новый)\n.NET Core Web API\nДля интеграции с новыми сервисами" as ib_api
+    database "База данных интернет-банка\nMS SQL\nСуществующая БД" as ib_db
+  }
+  
+  ' Сайт
+  rectangle "Сайт" {
+    rectangle "Frontend сайта\nReact.js\nКлиентская часть" as site_frontend
+    rectangle "Backend сайта\nPHP\nСерверная часть" as site_backend
+  }
+  
+  ' АБС
+  rectangle "АБС (Автоматизированная банковская система)" {
+    rectangle "Десктоп-клиент АБС\nDelphi\nИнтерфейс для сотрудников" as abs_client
+    database "База данных АБС\nOracle\nПерегружена, вертикальное масштабирование" as abs_db
+    rectangle "Бизнес-логика АБС\nPL/SQL\nХранимые процедуры" as abs_plsql
+  }
+  
+  ' Система кол-центра
+  rectangle "Система кол-центра" {
+    rectangle "Web-интерфейс кол-центра\nReact.js\nИнтерфейс операторов" as cc_frontend
+    rectangle "Backend кол-центра\nJava Spring Boot\nБизнес-логика" as cc_backend
+    database "БД кол-центра\nPostgreSQL\nХранение обращений" as cc_db
+  }
+  
+  ' API Gateway (отдельно, не в группе)
+  rectangle "API Gateway\nNginx/Kong/Spring Cloud Gateway\nМаршрутизация, кэширование, rate limiting" as api_gateway
+  
+  ' RMS
+  rectangle "Rate Management System (RMS)" {
+    rectangle "RMS REST API\nJava Spring Boot\nУправление ставками" as rms_api
+    rectangle "RMS Admin UI\nReact.js\nИнтерфейс для бэк-офиса" as rms_admin
+    database "RMS База данных\nPostgreSQL\nХранение ставок и правил" as rms_db
+    rectangle "RMS Scheduler\nJava Spring Batch\nРасчет ставок по расписанию" as rms_scheduler
+  }
+  
+  ' UAR
+  rectangle "Unified Application Registry (UAR)" {
+    rectangle "UAR REST API\nJava Spring Boot\nУправление заявками" as uar_api
+    database "UAR База данных\nPostgreSQL\nХранение заявок" as uar_db
+    rectangle "UAR Kafka Producer\nJava\nПубликация событий" as uar_kafka_producer
+  }
+  
+  ' Адаптер АБС
+  rectangle "Адаптер АБС" {
+    rectangle "Адаптер API\nJava Spring Boot\nИнтеграция с новыми сервисами" as adapter_api
+    rectangle "Reader\nJava/Python\nЧтение данных из АБС" as adapter_reader
+    rectangle "Writer\nJava/Python\nЗапись в АБС с контролем скорости" as adapter_writer
+    database "Кэш/буфер\nPostgreSQL/Redis\nВременное хранение" as adapter_cache
+  }
+  
+  ' СМС-сервис
+  rectangle "СМС-сервис" {
+    rectangle "SMS REST API\nJava/Python\nПрием запросов на отправку" as sms_api
+    rectangle "SMS Processor\nJava/Python\nОбработка очереди" as sms_processor
+    database "SMS База данных\nPostgreSQL\nОчередь и история" as sms_db
+    rectangle "SMS Gateway Client\nJava/Python\nИнтеграция с шлюзом" as sms_gateway_client
+  }
+  
+  ' Существующий СМС-шлюз
+  rectangle "СМС-шлюз\nСуществующий\nИнтеграция с оператором" as smsg
+}
+
+' Внешние компоненты
+database "Реплика Oracle\nOracle\nRead-only копия" as oracle_replica
+rectangle "Телеком-оператор\nВнешний оператор СМС" as telecom
+rectangle "ЦБ РФ API\nВнешний API\nСтавка рефинансирования" as cbr_api
+actor "Оператор кол-центра" as call_center_operator
+actor "Сотрудник отделения" as branch_employee
+
+' Связи для интернет-банка
+client --> ib_web : "Использует (HTTPS)"
+ib_web --> ib_api : "Вызывает (HTTP)"
+ib_api --> api_gateway : "Интеграция (HTTPS/REST)"
+ib_api --> ib_db : "Читает/пишет (SQL)"
+
+' Связи для сайта
+client --> site_frontend : "Использует (HTTPS)"
+site_frontend --> site_backend : "Вызывает (HTTP/API)"
+site_backend --> api_gateway : "Интеграция (HTTPS/REST)"
+
+' Связи API Gateway
+api_gateway --> rms_api : "Запрос ставок (REST)"
+api_gateway --> uar_api : "Управление заявками (REST)"
+api_gateway --> adapter_api : "Получение данных из АБС (REST)"
+
+' Связи RMS
+rms_admin --> rms_api : "Управление ставками (REST)"
+rms_scheduler --> rms_api : "Периодический расчет"
+rms_api --> rms_db : "Читает/пишет (SQL)"
+rms_api --> adapter_api : "Запрос данных для расчета (REST)"
+
+' Связи UAR
+uar_api --> uar_db : "Читает/пишет (SQL)"
+uar_api --> uar_kafka_producer : "Публикация событий"
+uar_api --> sms_api : "События изменения статуса (REST)"
+uar_api --> adapter_api : "Создание депозита по заявке (REST)"
+
+' Связи СМС-сервиса
+sms_api --> sms_db : "Читает/пишет (SQL)"
+sms_processor --> sms_db : "Читает очередь (SQL)"
+sms_processor --> sms_gateway_client : "Отправка СМС"
+sms_gateway_client --> smsg : "Вызов API"
+
+' Связи адаптера АБС
+adapter_api --> adapter_cache : "Читает/пишет кэш (SQL/Redis)"
+adapter_reader --> adapter_cache : "Обновляет кэш"
+adapter_reader --> oracle_replica : "Читает данные (JDBC/SQL)"
+adapter_reader --> abs_db : "Читает данные (JDBC/SQL)"
+adapter_writer --> abs_db : "Записывает данные (JDBC/SQL)"
+adapter_writer --> adapter_cache : "Читает очередь задач"
+
+' Связи АБС
+abs_client --> abs_db : "Работа сотрудников (Oracle Net)"
+abs_plsql --> abs_db : "Бизнес-логика"
+
+' Связи системы кол-центра
+call_center_operator --> cc_frontend : "Работает (HTTPS)"
+cc_frontend --> cc_backend : "Вызывает (HTTP/API)"
+cc_backend --> cc_db : "Читает/пишет (SQL)"
+cc_backend --> uar_api : "Получает заявки с сайта (REST)"
+
+' Связи сотрудника отделения
+branch_employee --> abs_client : "Работает с АБС"
+
+' Внешние связи
+rms_scheduler --> cbr_api : "Получает ставку (API/HTTP)"
+smsg --> telecom : "Отправляет СМС (API)"
+
+@enduml

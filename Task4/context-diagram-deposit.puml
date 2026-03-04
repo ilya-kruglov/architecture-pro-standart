@@ -1,0 +1,29 @@
+@startuml
+title Контекстная диаграмма - Передача ставок в кол-центры
+
+actor "Клиент" as client
+actor "Оператор кол-центра" as cc_operator
+actor "Оператор партнерского кол-центра" as partner_operator
+
+rectangle "Банк 'Стандарт'" {
+  rectangle "RMS\nRate Management System\nУправление ставками" as rms
+  rectangle "Система кол-центра\nReact + Java + PostgreSQL" as cc_system
+  rectangle "SFTP-сервер\nDMZ\nХранение файлов для партнера" as sftp_server
+}
+
+rectangle "Партнерский кол-центр\nВнешняя компания" {
+  rectangle "Система партнерского кол-центра\nВнешняя CRM" as partner_system
+}
+
+client --> cc_operator : "Звонок с вопросом о ставках"
+client --> partner_operator : "Звонок с вопросом о ставках"
+
+cc_operator --> cc_system : "Работа с системой"
+cc_system --> rms : "Запрос актуальных ставок (REST API)"
+
+rms --> sftp_server : "Ежедневный экспорт ставок\n(SFTP, файлы CSV/XML)"
+
+partner_operator --> partner_system : "Работа с системой"
+partner_system --> sftp_server : "Загрузка файлов со ставками\n(SFTP, read-only)"
+
+@enduml
