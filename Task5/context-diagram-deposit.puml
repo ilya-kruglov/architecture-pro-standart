@@ -1,0 +1,46 @@
+@startuml
+title Контекстная диаграмма - Онлайн-подача заявок на кредит
+
+actor "Новый клиент" as new_client
+actor "Существующий клиент" as existing_client
+actor "Сотрудник кредитного отдела" as credit_officer
+actor "Сотрудник отделения" as branch_employee
+
+rectangle "Банк 'Стандарт'" {
+  rectangle "Сайт\nPHP + React.js" as website
+  rectangle "Интернет-банк\nASP.NET MVC + MS SQL" as internet_bank
+  rectangle "АБС\nDelphi + Oracle\nЯдро банковской системы" as abs
+  rectangle "Кредитный конвейер\nCamunda + Oracle\nУправление заявками" as credit_conveyor
+  rectangle "Система скоринга\nPython/Flask + PostgreSQL\nОценка кредитоспособности" as scoring
+  rectangle "СМС-сервис\nJava/Python" as sms_service
+  rectangle "СМС-шлюз" as sms_gateway
+  rectangle "API Gateway\nМаршрутизация, кэширование" as api_gateway
+  rectangle "UAR\nUnified Application Registry\nЕдиный реестр заявок" as uar
+}
+
+rectangle "Внешние системы" {
+  rectangle "Бюро кредитных историй\nREST API" as credit_bureau
+  rectangle "Телеком-оператор" as telecom
+}
+
+new_client --> website : "Подает заявку на кредит (HTTPS)"
+existing_client --> internet_bank : "Подает заявку на кредит (HTTPS)"
+
+website --> api_gateway : "Создание заявки"
+internet_bank --> api_gateway : "Создание заявки"
+
+api_gateway --> uar : "Регистрация заявки"
+uar --> credit_conveyor : "Передача заявки"
+
+credit_conveyor --> scoring : "Запрос скоринга (REST)"
+scoring --> credit_bureau : "Запрос данных (REST API)"
+scoring --> abs : "Запрос истории клиента (через адаптер)"
+
+credit_conveyor --> sms_service : "События изменения статуса"
+sms_service --> sms_gateway : "Отправка СМС"
+sms_gateway --> telecom : "СМС клиенту"
+
+credit_officer --> credit_conveyor : "Обработка заявок"
+branch_employee --> abs : "Оформление кредита"
+
+@enduml
