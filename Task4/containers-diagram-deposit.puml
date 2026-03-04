@@ -1,0 +1,48 @@
+@startuml
+title Диаграмма компонентов - Передача ставок в кол-центры
+
+' RMS Components
+rectangle "Rate Management System (RMS)" {
+  rectangle "RMS Core\nJava Spring Boot\nБизнес-логика управления ставками" as rms_core
+  database "RMS Database\nPostgreSQL\nХранение ставок и истории" as rms_db
+  rectangle "REST API\nJava Spring Boot\nДля системы кол-центра" as rms_api
+  rectangle "SFTP Export Service\nJava Spring Batch\nГенерация и отправка файлов" as rms_export
+  rectangle "Rate Calculation Engine\nJava\nРасчет ставок" as rms_calc
+}
+
+' Call Center System Components
+rectangle "Система кол-центра" {
+  rectangle "CC Frontend\nReact.js\nИнтерфейс оператора" as cc_ui
+  rectangle "CC Backend\nJava Spring Boot\nБизнес-логика" as cc_backend
+  database "CC Database\nPostgreSQL\nОбращения, кэш ставок" as cc_db
+  rectangle "Rate Cache Service\nJava\nКэширование ставок из RMS" as cc_cache
+}
+
+' SFTP Server Components
+rectangle "SFTP-сервер (DMZ)" {
+  rectangle "SFTP Service\nOpenSSH\nФайловое хранилище" as sftp_service
+  rectangle "File Storage\nДиректории\n/outgoing/partner_rates" as sftp_storage
+}
+
+' External System
+rectangle "Система партнерского кол-центра" as partner_system
+
+' Связи внутри RMS
+rms_core --> rms_db : "Читает/пишет (SQL)"
+rms_core --> rms_calc : "Вызывает расчет"
+rms_export --> rms_core : "Получает ставки для экспорта"
+rms_export --> sftp_service : "SFTP upload\nежедневно"
+rms_api --> rms_core : "Получает данные"
+
+' Связи системы кол-центра
+cc_ui --> cc_backend : "HTTP/REST"
+cc_backend --> cc_db : "Читает/пишет (SQL)"
+cc_backend --> cc_cache : "Получает ставки"
+cc_cache --> rms_api : "REST API запросы\n(с кэшированием)"
+cc_db <-- cc_cache : "Хранит кэш"
+
+' Связи SFTP
+partner_system --> sftp_service : "SFTP download\n( read-only, по расписанию )"
+sftp_service --> sftp_storage : "Читает файлы"
+
+@enduml
